@@ -22,9 +22,9 @@ function App() {
     <div className="app-home">
       <NavBar />
 
-      <div className="h-screen flex min-h-screen flex flex-col lg:flex-row">
+      <div className="min-h-screen flex flex-col lg:flex-row max-w-[800px] mx-auto">
         {/* LEFT PANEL */}
-        <div className="w-2/3 p-0 flex flex-col bg-base-200">
+        <div className="w-2/3 p-4 flex flex-col bg-base-200">
           {/* <h1 className="text-2xl font-bold mb-4">🌍 Bloom Watchers - Kenya</h1> */}
           <KenyaMap data={data} />
           <div className="mt-4 flex gap-2">
@@ -36,7 +36,7 @@ function App() {
         </div>
 
         {/* RIGHT PANEL */}
-        <div className="w-1/3 p-0 bg-base-200 overflow-y-auto">
+        <div className="w-1/3 p-4 bg-base-200 overflow-y-auto">
           <h2 className="text-xl font-semibold mb-4">Bloom Insights</h2>
 
           {/* If info from Python API is available */}
