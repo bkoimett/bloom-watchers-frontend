@@ -17,7 +17,11 @@ function computeStats(records) {
   return { avg: avg, anomalies };
 }
 
-export default function InfoPanel({ records = [], predictions = [] }) {
+export default function InfoPanel({
+  records = [],
+  predictions = [],
+  prediction = null,
+}) {
   const stats = computeStats(records);
 
   // build trend data grouped by date (average)
@@ -34,21 +38,51 @@ export default function InfoPanel({ records = [], predictions = [] }) {
 
   return (
     <div>
-      <div className="card bg-base-100 p-3 mb-3">
-        <div className="flex justify-between">
-          <div>
-            <div className="text-sm text-gray-600">Average NDVI</div>
-            <div className="text-2xl font-bold">{stats.avg.toFixed(2)}</div>
+      {/* --- Single Prediction Display --- */}
+      {prediction && (
+        <div className="card p-3 mb-3 bg-base-200">
+          <div className="text-sm text-gray-600">Prediction</div>
+          <div className="text-lg font-semibold">
+            {prediction.city} — {new Date(prediction.date).toLocaleDateString()}
           </div>
           <div>
-            <div className="text-sm text-gray-600">Anomalous regions</div>
-            <div className="text-2xl font-bold text-error">
-              {stats.anomalies}
-            </div>
+            NDVI: <b>{prediction.predicted_ndvi.toFixed(3)}</b>
+          </div>
+          <div className="text-xs">{prediction.interpretation}</div>
+          <div>
+            {prediction.anomaly ? "⚠️ Anomaly detected" : "✅ No anomaly"}
           </div>
         </div>
+      )}
+
+      {/* --- Average NDVI and Anomalies --- */}
+      {/* --- Anomalies --- */}
+      <div>
+        <h3 className="font-semibold mb-2">Anomalies</h3>
+        {records.filter((r) => !!r.anomaly).length ? (
+          records
+            .filter((r) => !!r.anomaly)
+            .map((a, i) => (
+              <div
+                key={i}
+                className="card bg-red-100 border border-red-300 text-red-900 p-2 mb-2"
+              >
+                <div>
+                  <b>{a.county}</b> — {new Date(a.date).toLocaleDateString()}
+                </div>
+                <div className="text-sm">
+                  Type: {a.anomaly || "Anomaly"} · NDVI: {a.ndvi?.toFixed(2)}
+                </div>
+              </div>
+            ))
+        ) : (
+          <div className="text-sm text-gray-500">
+            No anomalies for selection
+          </div>
+        )}
       </div>
 
+      {/* --- NDVI Trend Chart --- */}
       <div className="mb-4">
         <h3 className="font-semibold mb-2">NDVI trend</h3>
         {trend.length ? (
@@ -79,6 +113,7 @@ export default function InfoPanel({ records = [], predictions = [] }) {
         )}
       </div>
 
+      {/* --- Predictions List --- */}
       <div className="mb-4">
         <h3 className="font-semibold mb-2">Predictions</h3>
         {predictions.length ? (
@@ -101,6 +136,7 @@ export default function InfoPanel({ records = [], predictions = [] }) {
         )}
       </div>
 
+      {/* --- Anomalies --- */}
       <div>
         <h3 className="font-semibold mb-2">Anomalies</h3>
         {records.filter((r) => r.anomaly).length ? (

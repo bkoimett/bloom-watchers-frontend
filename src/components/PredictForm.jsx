@@ -1,70 +1,56 @@
-import { useState } from "react";
-import { fetchPrediction } from "../services/api";
+import React, { useState } from "react";
+import { requestPrediction } from "../services/api";
 
-export default function PredictForm() {
-  const [city, setCity] = useState("");
+export default function PredictForm({ defaultCounty = "", onResult }) {
+  const [county, setCounty] = useState(defaultCounty || "");
   const [date, setDate] = useState("");
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = async (e) => {
+  async function handleSubmit(e) {
     e.preventDefault();
-    setError(null);
-    setResult(null);
-
+    if (!county || !date) return alert("Enter both county and date");
+    setLoading(true);
+    setError("");
     try {
-      const data = await fetchPrediction(city, date);
-      setResult(data);
+      const res = await requestPrediction(county, date);
+      onResult(res); // pass to parent (App)
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
   return (
-    <div className="p-4 bg-base-100 rounded-lg shadow-lg">
-      <h2 className="text-xl font-semibold mb-4 text-primary">Predict NDVI</h2>
-      <form onSubmit={handleSubmit} className="space-y-2">
+    <form onSubmit={handleSubmit} className="card bg-base-100 p-3 space-y-2">
+      <div>
+        <label className="block text-sm font-medium mb-1">County</label>
         <input
           type="text"
-          placeholder="City (e.g., Kisumu)"
+          value={county}
+          onChange={(e) => setCounty(e.target.value)}
           className="input input-bordered w-full"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          required
+          placeholder="e.g., Kisumu"
         />
+      </div>
+      <div>
+        <label className="block text-sm font-medium mb-1">Date</label>
         <input
           type="date"
-          className="input input-bordered w-full"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          required
+          className="input input-bordered w-full"
         />
-        <button type="submit" className="btn btn-primary w-full">
-          Predict
-        </button>
-      </form>
-
-      {error && <p className="text-error mt-3">{error}</p>}
-
-      {result && (
-        <div className="mt-4 p-3 bg-base-200 rounded-lg">
-          <p>
-            <strong>City:</strong> {result.city}
-          </p>
-          <p>
-            <strong>Date:</strong> {result.date}
-          </p>
-          <p>
-            <strong>NDVI:</strong> {result.predicted_ndvi.toFixed(3)}
-          </p>
-          <p>
-            <strong>Interpretation:</strong> {result.interpretation}
-          </p>
-          <p>
-            <strong>Anomaly:</strong> {result.anomaly ? "⚠️ Yes" : "✅ No"}
-          </p>
-        </div>
-      )}
-    </div>
+      </div>
+      <button
+        type="submit"
+        disabled={loading}
+        className="btn btn-primary w-full"
+      >
+        {loading ? "Predicting..." : "Predict NDVI"}
+      </button>
+      {error && <div className="text-error text-sm">{error}</div>}
+    </form>
   );
 }

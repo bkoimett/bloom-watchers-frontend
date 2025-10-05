@@ -3,146 +3,191 @@ import React, { useEffect, useState, useMemo } from "react";
 import KenyaMap from "./components/KenyaMap";
 import FilterPanel from "./components/FilterPanel";
 import InfoPanel from "./components/InfoPanel";
-import { fetchBlooms, filterBlooms, predictCounty } from "./services/api";
 import PredictForm from "./components/PredictForm";
+import { fetchBlooms, requestPrediction } from "./services/api";
 
 export default function App() {
   const [allData, setAllData] = useState([]);
-  const [displayData, setDisplayData] = useState([]); // filtered
+  const [displayData, setDisplayData] = useState([]);
   const [selectedCounty, setSelectedCounty] = useState("");
   const [selectedYear, setSelectedYear] = useState("");
-  const [showAnomalies, setShowAnomalies] = useState(true);
   const [dates, setDates] = useState([]);
   const [dateIndex, setDateIndex] = useState(0);
-  const [predictions, setPredictions] = useState([]);
+  const [prediction, setPrediction] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
+  // Load all data once
   useEffect(() => {
-    async function load() {
-      const data = await fetchBlooms();
-      // normalize date strings
-      const normalized = data.map((d) => ({
-        ...d,
-        date: new Date(d.date).toISOString().slice(0, 10),
-      }));
-      setAllData(normalized);
-      setDisplayData(normalized);
-      const uniqueDates = Array.from(
-        new Set(normalized.map((d) => d.date))
-      ).sort((a, b) => new Date(a) - new Date(b));
-      setDates(uniqueDates);
-      setDateIndex(Math.max(0, uniqueDates.length - 1)); // default most recent
-    }
-    load();
+    (async () => {
+      try {
+        const data = await fetchBlooms();
+        const normalized = (data || []).map((d) => ({
+          ...d,
+          date: new Date(d.date).toISOString().slice(0, 10),
+        }));
+        setAllData(normalized);
+        setDisplayData(normalized);
+
+        const uniqueDates = Array.from(new Set(normalized.map((d) => d.date))).sort(
+          (a, b) => new Date(a) - new Date(b)
+        );
+        setDates(uniqueDates);
+        setDateIndex(Math.max(0, uniqueDates.length - 1));
+      } catch (err) {
+        console.error(err);
+        setError(err.message || "Failed to load data");
+      }
+    })();
   }, []);
 
-  // compute unique counties and years for selects
   const counties = useMemo(
     () => Array.from(new Set(allData.map((d) => d.county))).sort(),
     [allData]
   );
-  const years = useMemo(
-    () =>
-      Array.from(
-        new Set(allData.map((d) => new Date(d.date).getFullYear()))
-      ).sort(),
-    [allData]
-  );
 
-  // apply filters from controls
+  const years = useMemo(() => {
+    const allYears = Array.from(
+      new Set(allData.map((d) => new Date(d.date).getFullYear()))
+    ).sort((a, b) => a - b);
+    return ["All", ...allYears];
+  }, [allData]);
+
+  // Apply filters and update slider
   const applyFilters = async () => {
-    // prefer backend filtered endpoint
-    const year = selectedYear || "";
-    const county = selectedCounty || "";
-    const res = await filterBlooms(county, year);
-    const normalized = res.map((d) => ({
-      ...d,
-      date: new Date(d.date).toISOString().slice(0, 10),
-    }));
-    setDisplayData(normalized);
-    const uniqueDates = Array.from(new Set(normalized.map((d) => d.date))).sort(
-      (a, b) => new Date(a) - new Date(b)
-    );
-    setDates(uniqueDates);
-    setDateIndex(0);
+    try {
+      setLoading(true);
+
+      let filtered = allData;
+
+      if (selectedCounty && selectedCounty !== "All") {
+        filtered = filtered.filter((d) => d.county === selectedCounty);
+      }
+
+      if (selectedYear && selectedYear !== "All") {
+        filtered = filtered.filter(
+          (d) => new Date(d.date).getFullYear() === Number(selectedYear)
+        );
+      }
+
+      const normalized = filtered.map((d) => ({
+        ...d,
+        date: new Date(d.date).toISOString().slice(0, 10),
+        anomaly: !!d.anomaly,
+      }));
+
+      setDisplayData(normalized);
+
+      const uniqueDates = Array.from(new Set(normalized.map((d) => d.date))).sort(
+        (a, b) => new Date(a) - new Date(b)
+      );
+      setDates(uniqueDates);
+      setDateIndex(uniqueDates.length - 1);
+    } catch (err) {
+      console.error("❌ Filter failed:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handlePredict = async () => {
-    const county = selectedCounty || "All";
-    const preds = await predictCounty(county, 6);
-    setPredictions(preds);
+  // Predict using backend
+  const handlePredict = async (
+    countyToPredict = selectedCounty,
+    dateToPredict = null
+  ) => {
+    if (!countyToPredict) {
+      alert("Select a county first");
+      return;
+    }
+    try {
+      setLoading(true);
+      const date =
+        dateToPredict ?? dates[dateIndex] ?? new Date().toISOString().slice(0, 10);
+      const res = await requestPrediction(countyToPredict, date);
+      setPrediction(res);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Prediction failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // compute the currently visible records based on date slider
   const currentDate = dates.length ? dates[dateIndex] : null;
   const visibleRecords = currentDate
     ? displayData.filter((d) => d.date === currentDate)
     : displayData;
 
   return (
-    <div className="h-screen flex">
-      {/* LEFT: map + controls */}
-      <div className="w-2/3 p-4 flex flex-col">
-        <div className="flex items-center justify-between mb-3">
-          <h1 className="text-2xl font-bold">🌍 Bloom Watchers - Kenya</h1>
-          <div className="flex gap-2 items-center">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={showAnomalies}
-                onChange={(e) => setShowAnomalies(e.target.checked)}
-              />
-              <span className="text-sm">Show anomalies</span>
-            </label>
-          </div>
-        </div>
+    <div className="h-screen flex flex-wrap">
+      {/* LEFT: map + slider + filters */}
+      <div className="w-full md:w-2/3 p-4 flex flex-col">
+        <h1 className="text-2xl font-bold mb-3">🌍 Bloom Watchers - Kenya</h1>
 
-        <KenyaMap
-          data={displayData}
-          showAnomalies={showAnomalies}
-          dateFilter={currentDate}
-        />
-
-        <div className="mt-3 flex gap-2">
-          <button className="btn btn-primary" onClick={applyFilters}>
-            Filter
-          </button>
-          <button className="btn btn-secondary" onClick={handlePredict}>
-            Predict
-          </button>
-        </div>
-
-        {/* small hint/legend */}
-        <div className="text-xs text-gray-500 mt-2">
-          Use the filter panel on the right to narrow the view. Use the time
-          slider to step through snapshots.
-        </div>
-      </div>
-
-      {/* RIGHT: filters + info */}
-      <div className="w-1/3 p-4 bg-base-200 overflow-auto">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold">Controls</h2>
-          <FilterPanel
-            counties={counties}
-            years={years}
-            selectedCounty={selectedCounty}
-            setSelectedCounty={setSelectedCounty}
-            selectedYear={selectedYear}
-            setSelectedYear={setSelectedYear}
-            dates={dates}
-            dateIndex={dateIndex}
-            setDateIndex={setDateIndex}
+        {/* Map */}
+        <div className="flex-1 border rounded-lg overflow-hidden">
+          <KenyaMap
+            data={visibleRecords}
+            prediction={prediction}
+            showAnomalies={true}
           />
         </div>
 
-        <div>
-          <h2 className="text-lg font-semibold mb-2">Bloom Insights</h2>
-          <InfoPanel records={visibleRecords} predictions={predictions} />
+        {/* Slider below map */}
+        <div className="mt-4">
+          {dates.length > 0 && (
+            <div className="mb-4">
+              <label className="block text-sm mb-1 font-semibold">
+                Date: {dates[dateIndex]}
+              </label>
+              <input
+                type="range"
+                min="0"
+                max={dates.length - 1}
+                value={dateIndex}
+                onChange={(e) => setDateIndex(Number(e.target.value))}
+                className="w-full range range-primary"
+              />
+            </div>
+          )}
+
+          {/* Filters + Apply button together */}
+          <div className="flex flex-wrap items-end gap-3">
+            <FilterPanel
+              counties={counties}
+              years={years}
+              selectedCounty={selectedCounty}
+              setSelectedCounty={setSelectedCounty}
+              selectedYear={selectedYear}
+              setSelectedYear={setSelectedYear}
+            />
+
+            <button
+              className="btn btn-primary mt-2"
+              onClick={applyFilters}
+              disabled={loading}
+            >
+              Apply Filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT: Predict + Info */}
+      <div className="w-full md:w-1/3 p-4 bg-base-200 overflow-auto flex flex-col">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold mb-2">Predict NDVI</h2>
+          <PredictForm
+            defaultCounty={selectedCounty}
+            onResult={(pred) => setPrediction(pred)}
+            onPredict={handlePredict}
+          />
         </div>
 
-        <PredictForm/>
-
-
+        <div className="flex-1">
+          <h2 className="text-lg font-semibold mb-2">Bloom Insights</h2>
+          <InfoPanel records={visibleRecords} prediction={prediction} />
+        </div>
       </div>
     </div>
   );
